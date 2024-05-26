@@ -1,0 +1,981 @@
+"pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+
+// Contrato lógico (implementação) - Versão 1
+contract QuidiahLabTokenV1 is ERC20, ERC20Burnable, Ownable, Initializable {
+   using SafeMath for uint256;
+
+    // Dados do Token
+    address public teamWallet;
+
+    address public platformWallet;
+
+    address public marketingWallet;
+
+    address public advisorsWallet;
+
+    address public reserveWallet;
+
+    address public healthProfessionalsWallet;
+
+    address public donationWallet; // Carteira para receber as doações
+
+    uint256 public constant INITIAL_SUPPLY = 1000000000 * 10 ** decimals();
+
+    uint256 public constant TEAM_ALLOCATION = 100000000 * 10 ** decimals();
+
+    uint256 public constant PLATFORM_ALLOCATION = 50000000 * 10 ** decimals();
+
+    uint256 public constant MARKETING_ALLOCATION = 100000000 * 10 ** decimals();
+
+    uint256 public constant ADVISORS_ALLOCATION = 50000000 * 10 ** decimals();
+
+    uint256 public constant RESERVE_ALLOCATION = 50000000 * 10 ** decimals();
+
+    uint256 public constant HEALTH_PROFESSIONALS_ALLOCATION = 50000000 * 10 ** decimals();
+
+    uint256 public constant PUBLIC_SALE_ALLOCATION = 400000000 * 10 ** decimals();
+
+    uint256 public constant LISTING_LIQUIDITY_ALLOCATION = 200000000 * 10 ** decimals();
+
+    // Queima de Tokens
+    uint256 public burnRate; // Porcentagem da oferta circulante a ser queimada por trimestre
+
+    uint256 public lastBurnTime; // Timestamp da última queima de tokens
+
+    // Dados Médicos
+  mapping(address => string) public patientMedicalData;
+
+    mapping(address => mapping(address => bool)) public patientDoctorAccess;
+
+    event MedicalDataShared(address indexed patient, address indexed doctor);
+
+    // NFTs de Imagens Médicas
+    struct MedicalNFT {
+
+        uint256 tokenId;
+
+        address owner;
+
+        string ipfsHash; // Hash IPFS da imagem médica
+
+        bool isFractionalized; // Indica se o NFT foi fracionado
+
+        uint256 totalFractions; // Número total de frações, se fracionado
+
+        mapping(uint256 => address) fractionOwners; // Mapeamento de frações para proprietários
+
+    }
+
+    mapping(uint256 => MedicalNFT) public medicalNFTs;
+
+    uint256 public nftCounter;
+
+
+    event MedicalNFTCreated(uint256 indexed tokenId, address indexed owner, string ipfsHash);
+
+    event MedicalNFTFractionPurchased(uint256 indexed tokenId, uint256 fractionId, address indexed buyer);
+
+    // Micro-Tarefas
+    struct MicroTask {
+
+        uint256 taskId;
+
+        address creator;
+
+        string description;
+
+        uint256 reward;
+
+        bool completed;
+
+        address worker;
+
+    }
+
+    mapping(uint256 => MicroTask) public microTasks;
+
+    uint256 public taskCounter;
+
+    event MicroTaskCreated(uint256 indexed taskId, address indexed creator, string description, uint256 reward);
+
+    event MicroTaskCompleted(uint256 indexed taskId, address indexed worker)
+
+    // Profissionais de Saúde
+    struct HealthProfessional {
+
+        address walletAddress;
+
+        string name;
+
+        string specialization;
+
+        uint256 rating;
+
+        bool isActive;
+
+    }
+
+    mapping(address => HealthProfessional) public healthProfessionals;
+
+    event HealthProfessionalRegistered(address indexed walletAddress, string name, string specialization);
+
+    event HealthProfessionalRatingUpdated(address indexed walletAddress, uint256 newRating);
+
+    // Governança
+       struct Proposal {
+
+        uint256 proposalId;
+
+        address proposer;
+
+        string description;
+
+        uint256 forVotes;
+
+        uint256 againstVotes;
+
+        bool executed;
+
+        uint256 createdTimestamp; 
+
+        mapping(address => bool) hasVoted;
+    }
+
+    mapping(uint256 => Proposal) public proposals;
+
+    uint256 public proposalCounter;
+
+    uint256 public votingPeriod = 7 days; 
+
+    uint256 public minimumQuorum = 100000000 * 10 ** decimals(); 
+
+    uint256 public minimumVotesToPass = 51; 
+
+    event ProposalCreated(uint256 indexed proposalId, address indexed proposer, string description);
+
+    event VoteCast(uint256 indexed proposalId, address indexed voter, bool vote);
+
+    event ProposalExecuted(uint256 indexed proposalId);
+
+    // Staking
+mapping(address => uint256) public stakedBalances;
+
+    uint256 public totalStaked;
+
+    mapping(address => uint256) public lastRewardClaimTime; 
+
+    event TokensStaked(address indexed staker, uint256 amount);
+
+    event TokensUnstaked(address indexed staker, uint256 amount);
+
+    // RV/AR
+   mapping(uint256 => string) public nftArModels; 
+
+    mapping(address => bool) public arEnabledUsers; 
+
+    event ARModelAdded(uint256 indexed tokenId, string arModelUrl); 
+    
+// Doações
+    uint256 public totalDonations; 
+
+    event DonationMade(address indexed donor, uint256 amount);
+
+    // Rastreamento de Medicamentos
+    struct Drug {
+
+        uint256 drugId;
+
+        string name;
+
+        string manufacturer;
+
+        uint256 expirationDate;
+
+        string batchNumber;
+
+        address currentOwner;
+
+    }
+
+    mapping(uint256 => Drug) public drugs;
+
+    uint256 public drugCounter;
+
+    event DrugRegistered(uint256 indexed drugId, string name, string manufacturer, uint256 expirationDate, string batchNumber);
+
+    event DrugOwnershipTransferred(uint256 indexed drugId, address indexed from, address indexed to);
+
+    // Verificação de Credenciais de Profissionais de Saúde
+    struct HealthProfessionalCredentials {
+
+        address professional;
+
+        string licenseNumber;
+
+        string issuingAuthority;
+
+        uint256 expirationDate;
+
+    }
+
+    mapping(address => HealthProfessionalCredentials) public credentials;
+
+    event CredentialsVerified(address indexed professional, string licenseNumber, string issuingAuthority, uint256 expirationDate);
+
+    // Gerenciamento de Epidemias
+    struct Outbreak {
+
+        string diseaseName;
+
+        uint256 reportedCases;
+
+        uint256 recoveredCases;
+
+        uint256 deaths;
+
+        uint256 lastUpdateTimestamp;
+
+    }
+
+    mapping(string => Outbreak) public outbreaks;
+
+    event OutbreakReported(string diseaseName, uint256 initialCases);
+
+    event OutbreakUpdated(string diseaseName, uint256 newCases, uint256 recoveredCases, uint256 deaths);
+
+    // Certificados de Saúde NFT
+    struct HealthCertificate {
+
+        uint256 tokenId;
+
+        address patient;
+
+        string medicalDataHash;
+
+        uint256 issueDate;
+    }
+
+    mapping(uint256 => HealthCertificate) public healthCertificates;
+
+    uint256 public certificateCounter;
+
+    event HealthCertificateIssued(uint256 indexed tokenId, address
+
+    // Construtor
+    constructor(
+
+        address _teamWallet,
+
+        address _platformWallet,
+
+        address _marketingWallet,
+
+        address _advisorsWallet,
+
+        address _reserveWallet,
+
+        address _healthProfessionalsWallet,
+
+        address _donationWallet
+
+    ) ERC20("Quidiah Lab Token", "QURE") {
+
+        teamWallet = _teamWallet;
+
+        platformWallet = _platformWallet;
+
+        marketingWallet = _marketingWallet;
+
+        advisorsWallet = _advisorsWallet;
+
+        reserveWallet = _reserveWallet;
+
+        healthProfessionalsWallet = _healthProfessionalsWallet;
+
+        donationWallet = _donationWallet;
+
+        // Alocação inicial de tokens
+        _mint(teamWallet, TEAM_ALLOCATION);
+
+        _mint(platformWallet, PLATFORM_ALLOCATION);
+
+        _mint(marketingWallet, MARKETING_ALLOCATION);
+
+        _mint(advisorsWallet, ADVISORS_ALLOCATION);
+
+        _mint(reserveWallet, RESERVE_ALLOCATION);
+
+        _mint(healthProfessionalsWallet, HEALTH_PROFESSIONALS_ALLOCATION);
+
+        _mint(msg.sender, PUBLIC_SALE_ALLOCATION); 
+
+        _mint(address(this), LISTING_LIQUIDITY_ALLOCATION); 
+
+
+        // Inicializar variáveis
+
+        burnRate = 2; 
+
+        lastBurnTime = block.timestamp;
+
+    }
+
+    // Modificadores
+    bool public paused = false;
+
+    modifier whenNotPaused() {
+
+        require(!paused, "Contract is paused");
+
+        _;
+
+    }
+
+    modifier onlyAdmin() {
+
+        require(msg.sender == owner(), "Only the admin can call this function");
+
+        _;
+
+    }
+
+    modifier onlyAuthorizedDoctor(address patient) {
+
+        require(patientDoctorAccess[patient][msg.sender], "Acesso negado: não autorizado");
+
+        _;
+
+    }
+
+    // Funções do Contrato
+    // Funções para Queima de Tokens
+
+    function burnTokens() public onlyAdmin {
+
+        require(block.timestamp >= lastBurnTime + 90 days, "Queima de tokens permitida apenas trimestralmente");
+
+        uint256 tokensToBurn = (totalSupply() * burnRate) / 100;
+
+        _burn(address(this), tokensToBurn);
+
+        lastBurnTime = block.timestamp;
+
+    }
+
+    // Funções para Dados Médicos
+
+    function shareMedicalData(address doctor, string memory data) public whenNotPaused {
+
+        patientMedicalData[msg.sender] = data;
+
+        patientDoctorAccess[msg.sender][doctor] = true;
+
+        emit MedicalDataShared(msg.sender, doctor);
+
+    }
+
+    function revokeDoctorAccess(address doctor) public whenNotPaused {
+
+        patientDoctorAccess[msg.sender][doctor] = false;
+    }
+
+    // Funções para NFTs de Imagens Médicas
+
+    function createMedicalNFT(string memory ipfsHash) public whenNotPaused {
+
+        nftCounter++;
+
+        uint256 newTokenId = nftCounter;
+
+        medicalNFTs[newTokenId] = MedicalNFT(newTokenId, msg.sender, ipfsHash, false, 0);
+
+        emit MedicalNFTCreated(newTokenId, msg.sender, ipfsHash);
+    }
+
+    function fractionalizeMedicalNFT(uint256 tokenId, uint256 totalFractions) public whenNotPaused {
+
+        require(medicalNFTs[tokenId].owner == msg.sender, "Somente o proprietário pode fracionar o NFT");
+
+        require(!medicalNFTs[tokenId].isFractionalized, "NFT já está fracionado");
+
+        require(totalFractions > 0, "Número total de frações deve ser maior que zero");
+
+        medicalNFTs[tokenId].isFractionalized = true;
+
+        medicalNFTs[tokenId].totalFractions = totalFractions;
+    }
+
+    function buyMedicalNFTFraction(uint256 tokenId, uint256 fractionId) public payable whenNotPaused {
+
+        require(medicalNFTs[tokenId].isFractionalized, "NFT não está fracionado");
+
+        require(fractionId > 0 && fractionId <= medicalNFTs[tokenId].totalFractions, "ID de fração inválido");
+
+        require(medicalNFTs[tokenId].fractionOwners[fractionId] == address(0), "Fração já foi comprada");
+
+        // Lógica para pagamento com QURE (a ser implementada)
+
+        // ...
+
+        medicalNFTs[tokenId].fractionOwners[fractionId] = msg.sender;
+
+        emit MedicalNFTFractionPurchased(tokenId, fractionId, msg.sender);
+    }
+
+    // Funções para Micro-Tarefas
+
+    function createMicroTask(string memory description, uint256 reward) public whenNotPaused {
+
+        require(balanceOf(msg.sender) >= reward, "Saldo insuficiente para criar a tarefa");
+
+        taskCounter++;
+
+        uint256 newTaskId = taskCounter;
+
+        microTasks[newTaskId] = MicroTask(newTaskId, msg.sender, description, reward, false, address(0));
+
+        _transfer(msg.sender, address(this), reward); 
+
+        emit MicroTaskCreated(newTaskId, msg.sender, description, reward);
+    }
+
+    function completeMicroTask(uint256 taskId) public whenNotPaused {
+
+        require(!microTasks[taskId].completed, "Tarefa já foi concluída");
+
+        require(microTasks[taskId].worker == address(0), "Tarefa já possui um trabalhador");
+
+        microTasks[taskId].completed = true;
+
+        microTasks[taskId].worker = msg.sender;
+
+        _transfer(address(this), msg.sender, microTasks[taskId].reward); 
+
+        emit MicroTaskCompleted(taskId, msg.sender);
+    }
+
+    // Funções para Profissionais de Saúde
+
+    function registerHealthProfessional(string memory name, string specialization) public whenNotPaused {
+
+        require(!healthProfessionals[msg.sender].isActive, "Profissional já cadastrado");
+
+        healthProfessionals[msg.sender] = HealthProfessional(msg.sender, name, specialization, 0, true);
+
+        emit HealthProfessionalRegistered(msg.sender, name, specialization);
+    }
+
+    function rateHealthProfessional(address professional, uint256 rating) public whenNotPaused {
+
+        require(healthProfessionals[professional].isActive, "Profissional não está ativo");
+
+        require(rating >= 1 && rating <= 5, "Classificação inválida");
+
+        // Lógica para calcular a nova média da classificação (a ser implementada)
+
+        // ...
+
+        emit HealthProfessionalRatingUpdated(professional, rating);
+    }
+
+    function receivePayment(uint256 amount) public whenNotPaused onlyAuthorizedDoctor(msg.sender) {
+
+        require(balanceOf(msg.sender) >= amount, "Saldo insuficiente para realizar o pagamento");
+
+        _transfer(msg.sender, address(this), amount);
+
+    }
+
+    // Funções para Governança
+
+    function createProposal(string memory description) public whenNotPaused {
+
+        // Lógica para verificar se o proponente tem tokens suficientes para criar uma proposta (a ser implementada)
+
+        // ...
+
+        proposalCounter++;
+
+        uint256 newProposalId = proposalCounter;
+
+        proposals[newProposalId] = Proposal(newProposalId, msg.sender, description, 0, 0, false, block.timestamp);
+
+        emit ProposalCreated(newProposalId, msg.sender, description);
+    }
+
+    function voteOnProposal(uint256 proposalId, bool vote) public whenNotPaused {
+
+        require(!proposals[proposalId].hasVoted[msg.sender], "Você já votou nesta proposta");
+
+        require(!proposals[proposalId].executed, "Proposta já foi executada");
+
+
+        // Lógica para verificar se o votante tem tokens suficientes para votar (a ser implementada)
+
+        // ...
+
+        proposals[proposalId].hasVoted[msg.sender] = true;
+
+        if (vote) {
+
+            proposals[proposalId].forVotes++;
+
+        } else {
+
+            proposals[proposalId].againstVotes++;
+
+        }
+
+        emit VoteCast(proposalId, msg.sender, vote);
+
+    }
+
+    function executeProposal(uint256 proposalId) public whenNotPaused {
+
+        require(proposalCanExecute(proposalId), "Proposta não pode ser executada");
+
+        // Lógica para executar a proposta (a ser implementada)
+
+        // ...
+
+        proposals[proposalId].executed = true;
+
+        emit ProposalExecuted(proposalId);
+    }
+
+    function proposalCanExecute(uint256 proposalId) public view returns (bool) {
+
+        Proposal storage proposal = proposals[proposalId];
+
+        // Verificar se o período de votação terminou
+
+        if (block.timestamp <= proposal.createdTimestamp + votingPeriod) {
+           return false;
+        }
+
+        // Verificar se o quórum foi atingido
+
+        uint256 totalVotes = proposal.forVotes + proposal.againstVotes;
+
+        if (totalVotes < minimumQuorum) {
+
+            return false;
+        }
+
+        // Verificar se a maioria dos votos foi favorável
+
+        if (proposal.forVotes * 100 / totalVotes < minimumVotesToPass) {
+           return false;
+        }
+
+        return true;
+    }
+
+    // Funções para Staking
+
+    function stakeTokens(uint256 amount) public whenNotPaused {
+
+        require(amount > 0, "Quantidade de tokens deve ser maior que zero");
+
+        require(balanceOf(msg.sender) >= amount, "Saldo insuficiente para staking");
+
+        _transfer(msg.sender, address(this), amount);
+
+        stakedBalances[msg.sender] = stakedBalances[msg.sender].add(amount);
+
+        totalStaked = totalStaked.add(amount);
+
+        emit TokensStaked(msg.sender, amount);
+    }
+
+    function unstakeTokens(uint256 amount) public whenNotPaused {
+
+        require(amount > 0, "Quantidade de tokens deve ser maior que zero");
+
+        require(stakedBalances[msg.sender] >= amount, "Saldo insuficiente para unstaking");
+
+        _transfer(address(this), msg.sender, amount);
+
+        stakedBalances[msg.sender] = stakedBalances[msg.sender].sub(amount);
+
+        totalStaked = totalStaked.sub(amount);
+
+        emit TokensUnstaked(msg.sender, amount);
+    }
+
+    function calculateStakingRewards(address staker) public view returns (uint256) {
+
+        // Calcula as recompensas com base no saldo staked, tempo de staking e taxa de recompensa
+
+        uint256 stakingPeriod = block.timestamp - lastRewardClaimTime[staker];
+
+        uint256 rewardRate = 10; // Exemplo: 10 tokens por ano por token staked
+
+        return (stakedBalances[staker] * rewardRate * stakingPeriod) / (365 days * 100);
+    }
+
+    function claimStakingRewards() public whenNotPaused {
+
+        uint256 rewards = calculateStakingRewards(msg.sender);
+
+        require(rewards > 0, "Nenhuma recompensa disponível");
+
+        _mint(msg.sender, rewards);
+
+        lastRewardClaimTime[msg.sender] = block.timestamp;
+    }
+
+    // Funções para RV/AR
+
+    function addARModelToNFT(uint256 tokenId, string memory arModelUrl) public whenNotPaused {
+
+        require(medicalNFTs[tokenId].owner == msg.sender, "Somente o proprietário pode adicionar um modelo AR");
+
+        nftArModels[tokenId] = arModelUrl;
+
+        emit ARModelAdded(tokenId, arModelUrl);
+    }
+
+    function enableARForUser(address user) public onlyAdmin {
+
+        arEnabledUsers[user] = true;
+    }
+
+    function disableARForUser(address user) public onlyAdmin {
+
+        arEnabledUsers[user] = false;
+    }
+
+    function getARModel(uint256 tokenId) public view returns (string memory) {
+
+        require(arEnabledUsers[msg.sender], "Acesso negado ao AR");
+
+        return nftArModels[tokenId];
+    }
+
+    // Funções para Doações
+
+    function donate(uint256 amount) public whenNotPaused {
+
+        require(amount > 0, "Quantidade de tokens deve ser maior que zero");
+
+        require(balanceOf(msg.sender) >= amount, "Saldo insuficiente para doação");
+
+        _transfer(msg.sender, donationWallet, amount);
+
+        totalDonations = totalDonations.add(amount);
+
+        emit DonationMade(msg.sender, amount);
+
+    }
+
+    function setDonationWallet(address newDonationWallet) public onlyAdmin {
+
+        donationWallet = newDonationWallet;
+    }
+
+
+    function withdrawDonations() public onlyAdmin {
+
+        require(donationWallet != address(0), "Carteira de doações não definida");
+
+        uint256 balance = balanceOf(donationWallet);
+
+        require(balance > 0, "Não há doações para retirar");
+
+        _transfer(donationWallet, owner(), balance);
+
+        totalDonations = 0;
+    }
+
+    // Funções para Rastreamento de Medicamentos
+
+    function registerDrug(string memory name, string memory manufacturer, uint256 expirationDate, string memory batchNumber) public onlyAdmin {
+
+        drugCounter++;
+
+        uint256 newDrugId = drugCounter;
+
+        drugs[newDrugId] = Drug(newDrugId, name, manufacturer, expirationDate, batchNumber, msg.sender);
+
+        emit DrugRegistered(newDrugId, name, manufacturer, expirationDate, batchNumber);
+    }
+
+    function transferDrugOwnership(uint256 drugId, address to) public whenNotPaused {
+
+        require(drugs[drugId].currentOwner == msg.sender, "Only the current owner can transfer ownership");
+
+        drugs[drugId].currentOwner = to;
+
+        emit DrugOwnershipTransferred(drugId, msg.sender, to);
+    }
+
+    // Funções para Verificação de Credenciais de Profissionais de Saúde
+
+    function verifyCredentials(string memory licenseNumber, string memory issuingAuthority, uint256 expirationDate) public whenNotPaused {
+
+        credentials[msg.sender] = HealthProfessionalCredentials(msg.sender, licenseNumber, issuingAuthority, expirationDate);
+
+        emit CredentialsVerified(msg.sender, licenseNumber, issuingAuthority, expirationDate);
+    }
+
+    // Funções para Gerenciamento de Epidemias
+    function reportOutbreak(string memory diseaseName, uint256 initialCases) public onlyAdmin {
+
+        outbreaks[diseaseName] = Outbreak(diseaseName, initialCases, 0, 0, block.timestamp);
+
+        emit OutbreakReported(diseaseName, initialCases);
+    }
+
+    function updateOutbreak(string memory diseaseName, uint256 newCases, uint256 recoveredCases, uint256 deaths) public onlyAdmin {
+
+        Outbreak storage outbreak = outbreaks[diseaseName];
+
+        outbreak.reportedCases += newCases;
+
+        outbreak.recoveredCases += recoveredCases;
+        outbreak.deaths += deaths;
+        outbreak.lastUpdateTimestamp = block.timestamp;
+
+        emit OutbreakUpdated(diseaseName, newCases, recoveredCases, deaths);
+    }
+
+
+    // Funções para Certificados de Saúde NFT
+
+    function issueHealthCertificate(address patient, string memory medicalDataHash) public onlyAuthorizedDoctor(patient) {
+
+        certificateCounter++;
+        uint256 newTokenId = certificateCounter;
+
+        healthCertificates[newTokenId] = HealthCertificate(newTokenId, patient, medicalDataHash, block.timestamp);
+
+        emit HealthCertificateIssued(newTokenId, patient, medicalDataHash);
+    }
+// Funções para pausar/retomar o contrato
+
+    function pause() public onlyAdmin {
+        paused = true;
+    }
+
+    function unpause() public onlyAdmin {
+        paused = false;
+    }
+
+    // Funções para Apoio Tecnológico e Medicamentos Inovadores
+
+    function registerInstitution(string memory name) public whenNotPaused {
+
+        require(!partnerInstitutions[msg.sender].isActive, "Instituição já cadastrada");
+
+        partnerInstitutions[msg.sender] = PartnerInstitution(msg.sender, name, true, 0, false);
+
+        emit InstitutionRegistered(msg.sender, name);
+    }
+
+    function updateInstitutionSupportLevel(address institution, uint256 newSupportLevel) public onlyAdmin {
+
+        require(partnerInstitutions[institution].isActive, "Instituição não está ativa");
+
+        require(newSupportLevel <= 1, "Nível de suporte inválido");
+
+        partnerInstitutions[institution].supportLevel = newSupportLevel;
+
+        emit InstitutionSupportLevelUpdated(institution, newSupportLevel);
+    }
+
+    function updateInstitutionInnovativeDrugAccess(address institution, bool hasAccess) public onlyAdmin {
+
+        require(partnerInstitutions[institution].isActive, "Instituição não está ativa");
+
+        partnerInstitutions[institution].hasInnovativeDrugAccess = hasAccess;
+
+        emit InstitutionInnovativeDrugAccessUpdated(institution, hasAccess);
+    }
+
+    // Funções para Flexibilidade na Escolha de Instituições Médicas
+
+    function rateInstitution(address institution, uint256 rating) public whenNotPaused {
+
+        require(partnerInstitutions[institution].isActive, "Instituição não está ativa");
+
+        require(rating >= 1 && rating <= 5, "Classificação inválida");
+
+        InstitutionRating storage institutionRating = institutionRatings[institution];
+
+        institutionRating.totalRating += rating;
+        institutionRating.numRatings++;
+
+        emit InstitutionRated(institution, msg.sender, rating);
+    }
+
+    function getInstitutionAverageRating(address institution) public view returns (uint256) {
+
+        InstitutionRating storage institutionRating = institutionRatings[institution];
+
+        if (institutionRating.numRatings == 0) {
+
+          return 0;
+        }
+
+        return institutionRating.totalRating / institutionRating.numRatings;
+    }
+
+    // Funções para Blockchain para Genômica
+function addGenomicData(string memory dataHash) public whenNotPaused {
+
+        patientGenomicData[msg.sender].push(GenomicData(msg.sender, dataHash, block.timestamp));
+
+        emit GenomicDataAdded(msg.sender, dataHash);
+    }
+}
+
+    // Função para Limites de transação 
+contract TransactionLimits {
+
+    address public owner;
+    mapping(address => uint256) public transactionLimits;
+    mapping(address => uint256) public spentToday;
+    uint256 public dailyLimit;
+    uint256 public lastResetTimestamp;
+
+    event TransactionLimitSet(address indexed user, uint256 limit);
+    event TransactionLimitReached(address indexed user, uint256 amount);
+
+    constructor(uint256 _dailyLimit) {
+        owner = msg.sender;
+        dailyLimit = _dailyLimit;
+        lastResetTimestamp = block.timestamp;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only the owner can call this function");
+        _;
+    }
+
+    function setTransactionLimit(address user, uint256 limit) external onlyOwner {
+        transactionLimits[user] = limit;
+        emit TransactionLimitSet(user, limit);
+    }
+
+    function resetDailyLimit() public {
+        require(block.timestamp >= lastResetTimestamp + 24 hours, "Daily limit can only be reset once per day");
+        lastResetTimestamp = block.timestamp;
+        spentToday[msg.sender] = 0;
+    }
+
+    function checkAndTransfer(address recipient, uint256 amount) external {
+        if (block.timestamp >= lastResetTimestamp + 24 hours) {
+            resetDailyLimit();
+        }
+
+        uint256 userLimit = transactionLimits[msg.sender];
+        require(spentToday[msg.sender] + amount <= userLimit, "Transaction limit exceeded");
+        require(spentToday[msg.sender] + amount <= dailyLimit, "Daily limit exceeded");
+
+        spentToday[msg.sender] += amount;
+        // Lógica para transferir tokens (não implementada aqui)
+        emit Transfer(msg.sender, recipient, amount); // Evento de transferência (exemplo)
+    }
+
+    // Função de pausar automaticamente em caso de atividade suspeita 
+
+contract CircuitBreaker {
+    bool public stopped = false;
+    address public owner;
+
+    uint256 public threshold; // Limite para acionar o circuit breaker
+    uint256 public cooldownPeriod; // Tempo de espera antes de reativar
+
+    event CircuitBreakerTriggered();
+    event CircuitBreakerReset();
+
+    constructor(uint256 _threshold, uint256 _cooldownPeriod) {
+        owner = msg.sender;
+        threshold = _threshold;
+        cooldownPeriod = _cooldownPeriod;
+    }
+
+    modifier stopInEmergency {
+        require(!stopped, "Circuit breaker is triggered");
+        _;
+    }
+
+    modifier onlyInEmergency {
+        require(stopped, "Circuit breaker is not triggered");
+        _;
+    }
+
+    modifier onlyOwner {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;
+    }
+
+    function stop() external onlyOwner {
+        stopped = true;
+        emit CircuitBreakerTriggered();
+    }
+}
+
+    function reset() external onlyOwner onlyInEmergency {
+        require(block.timestamp > lastStoppedTime + cooldownPeriod, "Cooldown period not elapsed");
+        stopped = false;
+        emit CircuitBreakerReset();
+    }
+
+    function updateThreshold(uint256 newThreshold) external onlyOwner {
+        threshold = newThreshold;
+    }
+
+    function updateCooldownPeriod(uint256 newCooldownPeriod) external onlyOwner {
+        cooldownPeriod = newCooldownPeriod;
+    }
+
+    // Funções para pausar/retomar o contrato
+    function pause() public onlyAdmin {
+        paused = true;
+
+    }
+
+    function unpause() public onlyAdmin {
+        paused = false;
+    }
+
+// Contrato proxy
+contract QuidiahLabTokenProxy is TransparentUpgradeableProxy {
+    constructor(address _logic, address admin, bytes memory _data)
+        TransparentUpgradeableProxy(_logic, admin, _data)
+    {}
+
+// Contrato de administração do proxy
+contract QuidiahLabTokenProxyAdmin is ProxyAdmin {
+    constructor() ProxyAdmin() {}
+}
+
+// Implantação e atualização
+contract QuidiahLabTokenDeployer {
+    address public proxyAdmin;
+    address public proxy;
+
+    constructor() {
+        QuidiahLabTokenV1 logic = new QuidiahLabTokenV1();
+        proxyAdmin = address(new QuidiahLabTokenProxyAdmin());
+
+        bytes memory data = abi.encodeWithSelector(QuidiahLabTokenV1.initialize.selector);
+        proxy = address(new QuidiahLabTokenProxy(address(logic), proxyAdmin, data));
+    }
+
+    function upgrade(address newLogic) external {
+        require(msg.sender == proxyAdmin, "Only proxy admin can upgrade");
+        ProxyAdmin(proxyAdmin).upgrade(TransparentUpgradeableProxy(proxy), newLogic);
+    }
+}
